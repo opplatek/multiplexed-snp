@@ -1,0 +1,14 @@
+data/raw/**
+data/references/**
+.git-credentials
+results/**
+data/**
+resources/**
+logs/**
+.snakemake
+.snakemake/**
+other
+todo*
+TODO*
+0
+workflow/report/*

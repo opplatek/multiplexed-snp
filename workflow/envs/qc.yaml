@@ -1,0 +1,14 @@
+channels:
+  - conda-forge
+  - bioconda
+  - r
+dependencies:
+  - python =3.7.1
+  - fastqc =0.11
+  - multiqc =1
+  - reaper =16.098
+  - samtools =1.4
+  - qualimap =2.2
+  - r =3.4
+  - r-stringr =1.1
+  - r-gtools =3.5

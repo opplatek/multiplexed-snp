@@ -1,0 +1,9 @@
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python =2.7
+  - ngsutils =0.5.9
+  - bbmap =38.58
+  - samtools =1.4
+  - picard =2.20.4

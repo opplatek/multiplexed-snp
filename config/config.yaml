@@ -1,0 +1,13 @@
+samples: config/samples.csv
+
+runs: config/runs.csv
+
+map_filters: config/map_filters.csv
+
+outdir: results
+
+min_len_fastq: 150
+
+assembly_filters: config/assembly.csv
+
+references: config/references.csv

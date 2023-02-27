@@ -1,0 +1,4 @@
+filter,val
+max_softlip_perc,0.1
+max_mism_number,999
+max_mism_perc,0.1

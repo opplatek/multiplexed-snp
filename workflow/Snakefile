@@ -1,0 +1,105 @@
+from snakemake.utils import min_version
+import pandas as pd
+import os
+import re
+
+
+##### set minimum snakemake version #####
+min_version("6.5.2")
+
+
+##### setup report #####
+
+
+##### config file #####
+configfile: "config/config.yaml"
+
+
+##### input files #####
+READS = ['1', '2']
+### Set general input files by scanning the input dir
+#RUNS, SAMPLES, = glob_wildcards("data/references/{run}/{sample}_ref.fa")
+#RUNS = list(set(RUNS))
+## We could also do this to extract glob_wildcards - untested
+##RUNS, SAMPLES = glob_wildcards('data/raw/{run}/{sample}.fastq.gz') # get sample names
+##SAMPLES = SAMPLES.sample # extract the {sample} values into a list
+
+### Read variables from the config file
+SAMPLES = dict(pd.read_csv(config['samples']).set_index('sample', drop=False)['sample'])
+#SAMPLES="1_S1" # Testing
+RUNS = dict(pd.read_csv(config['runs']).set_index("run", drop=False)['run'])
+if "map_filters" in config.keys():
+    MAP_FILTER_PARAMS = dict(pd.read_csv(config['map_filters']).set_index('filter', drop=False)['val']) # set_index determines what will be used as variable in the dictionary; dict() will determine what will be used as value in the dictionary
+else:
+    MAP_FILTER_PARAMS={
+        "max_softlip_perc": 0.1,
+        "max_mism_number": 999,
+        "max_mism_perc": 0.1}
+OUTDIR = os.path.join(config['outdir'], '') if 'outdir' in config.keys() else "results/"
+OUTDIR_SUB = "sfPct" + str(int(MAP_FILTER_PARAMS['max_softlip_perc'] * 100)) + "mmNo" + str(int(MAP_FILTER_PARAMS['max_mism_number'])) + "mmPct" + str(int(MAP_FILTER_PARAMS['max_mism_perc'] * 100)) + "/" # Set sub-output directory based on the most common params we change - max. perc. of sofclipping, max. number of softclipping, max. number of mismatches; however, can be any string you like if you specify it in the config
+ASSEMBLY_PARAMS = dict(pd.read_csv(config['assembly_filters']).set_index('filter', drop=False)['val'])
+##MIN_LEN_FASTQ = int(150)
+MIN_LEN_FASTQ = int(config['min_len_fastq']) if 'min_len_fastq' in config.keys() else 1
+##MIN_LEN_ASSEMBLY = int(config['min_len_assembly']) if 'min_len_assembly' in config.keys() else None
+MIN_LEN_ASSEMBLY = int(ASSEMBLY_PARAMS['min_len_assembly']) if 'min_len_assembly' in ASSEMBLY_PARAMS.keys() else 1
+TOPN_ASSEMBLY = int(ASSEMBLY_PARAMS['topn_assembly']) if 'topn_assembly' in ASSEMBLY_PARAMS.keys() else "All"
+print(MIN_LEN_FASTQ, MIN_LEN_ASSEMBLY, TOPN_ASSEMBLY)
+print(SAMPLES, RUNS, READS, OUTDIR, OUTDIR_SUB)
+
+# # TODO: Get references for samples
+# REFS = pd.read_csv(config['references']).set_index('sample', drop=True) # drop=True drops index column
+# #REFS = REFS.drop(REFS.columns[0], axis=1).to_dict('index') # Skip first column (sample names) and make dictionary
+# REFS = REFS.to_dict('index') # Skip first column (sample names) and make dictionary
+# REFS = {k1: list({k2: v2 for (k2, v2) in REFS[k1].items() if re.compile("yes|true", re.IGNORECASE).match(re.sub("^\s+|\s+$", "", v2))}.keys()) for k1 in REFS} # Get only keys which are yes (or true; removes starting and trailing white spaces) and make new dict which we can use to make the references
+# #{k3: v3 for k3, v3 in {k1 : {k2: v2 for (k2, v2) in REFS[k1].items() if k2 in my_list} for k1 in REFS}.items() if v3} # does the same thing plus removes empty keys
+
+##### Wildcards constrains
+wildcard_constraints:
+    min_len="\d+",
+    topn="(All|\d+)",
+
+
+##### load rules #####
+include: "rules/ref_prepare.smk"
+include: "rules/ref_index.smk"
+include: "rules/qc_raw.smk"
+include: "rules/adapter_scan.smk"
+include: "rules/preprocess.smk"
+include: "rules/qc_prep.smk"
+include: "rules/assembly_spades.smk"
+include: "rules/map.smk"
+include: "rules/bam_postprocess.smk"
+include: "rules/qc_bam.smk"
+include: "rules/snp_call.smk"
+include: "rules/snp_extract.smk"
+include: "rules/snp_nucleotide.smk"
+
+
+##### target rules #####
+rule all:
+    input:
+        expand("data/references/{run}/{sample}_ref.fa.amb", run=RUNS, sample=SAMPLES),
+        expand(OUTDIR + "{run}/qc/fastqc/raw/total_sequences.txt", run=RUNS),
+        expand(OUTDIR + "{run}/qc/fastqc/raw/multiqc_report.html", run=RUNS),
+        expand(OUTDIR + "{run}/qc/adapters/adapters.{suffix}", run=RUNS, suffix=['fa', "txt"]),
+        expand("data/prep/{run}/{sample}_L001_R{read}_001_prep.fastq.gz", run=RUNS, sample=SAMPLES, read=READS),
+        expand(OUTDIR + "{run}/qc/fastqc/prep/total_sequences.txt", run=RUNS),
+        expand(OUTDIR + "{run}/qc/fastqc/prep/multiqc_report.html", run=RUNS),
+        expand(OUTDIR + "{run}/bams/{sample}.bam", run=RUNS, sample=SAMPLES),
+        expand(OUTDIR + "{run}/" + OUTDIR_SUB + "bams/{sample}.duplRem.bam.bai", run=RUNS, sample=SAMPLES),
+        expand(OUTDIR + "{run}/qc/" + OUTDIR_SUB + "postprocess/{sample}.{bamtype}-flagstat.txt", bamtype=["indelRealigned", "duplRem"], run=RUNS, sample=SAMPLES),
+        expand(OUTDIR + "{run}/qc/" + OUTDIR_SUB + "postprocess/{sample}.{bamtype}.qual.boxplot.pdf", bamtype=["indelRealigned", "duplRem"], run=RUNS, sample=SAMPLES),
+        expand(OUTDIR + "{run}/qc/" + OUTDIR_SUB + "postprocess/{sample}.{bamtype}-qualimap.pdf", bamtype=["indelRealigned", "duplRem"], run=RUNS, sample=SAMPLES),
+        expand(OUTDIR + "{run}/qc/" + OUTDIR_SUB + "postprocess/{sample}.{bamtype}-qualimap.genome_results.txt", bamtype=["indelRealigned", "duplRem"], run=RUNS, sample=SAMPLES),
+        expand(OUTDIR + "{run}/qc/" + OUTDIR_SUB + "mapping_statistics/postFilter.flagstat.txt", run=RUNS),
+        expand(OUTDIR + "{run}/qc/" + OUTDIR_SUB + "mapping_statistics/postFilter.flagstat.pdf", run=RUNS),
+        expand(OUTDIR + "{run}/" + OUTDIR_SUB + "variants/{sample}/gatk/{sample}.recal.gatk.filt.phased.vcf", run=RUNS, sample=SAMPLES),
+        expand(OUTDIR + "{run}/" + OUTDIR_SUB + "variants/{sample}/samtools/{sample}.recal.samtools.filt.vcf", run=RUNS, sample=SAMPLES),
+        expand(OUTDIR + "{run}/" + OUTDIR_SUB + "variants/{sample}/varscan2/{sample}.recal.varscan2.{snv}.vcf", snv=['snp', 'indel'], run=RUNS, sample=SAMPLES),
+        expand(OUTDIR + "{run}/" + OUTDIR_SUB + "variants/{sample}/gt/{sample}.gatkSamtoolsVarScan2_Merged.gt.txt", run=RUNS, sample=SAMPLES),
+        expand(OUTDIR + "{run}/" + OUTDIR_SUB + "variants/{sample}/snp/{sample}.all.snp", run=RUNS, sample=SAMPLES),
+        expand(OUTDIR + "{run}/" + OUTDIR_SUB + "variants/{sample}/snp/{sample}.{length}.nucDist.txt", run=RUNS, sample=SAMPLES, length=["long", "short"]),
+        expand(OUTDIR + "{run}/assembly/scaffolds/{sample}.scaffolds.minlen{min_len}-top{topn}.fasta", sample=SAMPLES, run=RUNS, min_len=MIN_LEN_ASSEMBLY, topn=TOPN_ASSEMBLY),
+        expand(OUTDIR + "{run}/qc/assembly/quast_results", run=RUNS),
+        expand(OUTDIR + "{run}/assembly/scaffolds/bams/{sample}.scaffolds.minlen{min_len}.bam.bai", sample=SAMPLES, run=RUNS, min_len=MIN_LEN_ASSEMBLY),
+

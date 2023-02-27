@@ -1,0 +1,7 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - samtools =0.1.19
+  - vcftools =0.1.12
+  - varscan =2.4.0
